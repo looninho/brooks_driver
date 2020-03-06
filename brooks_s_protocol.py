@@ -145,10 +145,8 @@ class Brooks(object):
         return True
 
 if __name__ == "__main__":
-    import os
     
     print('\nBrooks MFC SLA58XX series driver\n')
-    print('\nPress Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
     
     tag='28478010'
     
