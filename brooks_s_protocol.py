@@ -57,7 +57,8 @@ class Brooks(object):
         return hex(result)
 
     def comm(self, command):
-        """ Implements low-level details of the s-protocol """
+        """ Implements low-level details of the s-protocol 
+        return 2 bytes status code and data."""
         check = str(self.crc(command))
         check = check[2:].zfill(2)
         final_com = 'FFFFFFFF' + command + check
@@ -88,70 +89,91 @@ class Brooks(object):
             except ValueError:
                 error = error + 1
                 response = 'Error'
-        return response
+        return response[:4], response[4:]
 
-    def read_flow(self):
+    @staticmethod
+    def get_bytes(n, data, nb=1):
+        return data[2*n:2*n+2*nb]
+
+    @staticmethod
+    def ieee_pack(value):
+        ieee = struct.pack('>f', value)
+        ieee_value = ''
+        for i in range(4):
+            ieee_value += hex(ieee[i])[2:].zfill(2)
+        return ieee_value
+
+    @staticmethod
+    def ieee_unpack(ieee_str):
+        ieee = bytes.fromhex(ieee_str)
+        return struct.unpack('>f', ieee)
+
+    def __comm(self, cmd):
+        return self.comm('82' + self.long_address + cmd)
+
+    def read_flow(self): #command #1
         """ Read the current flow-rate """
-        response = self.comm('82' + self.long_address + '0100') # command = 01 byte count = 00
+        status, data = self.__comm('0100') # command = 01 byte count = 00
         try:  # TODO: This should be handled be re-sending command
-            #status_code = response[0:4]
-            unit_code = int(response[4:6], 16)
-            flow_code = response[6:]
-            byte0 = chr(int(flow_code[0:2], 16))
-            byte1 = chr(int(flow_code[2:4], 16))
-            byte2 = chr(int(flow_code[4:6], 16))
-            byte3 = chr(int(flow_code[6:8], 16))
-            flow = struct.unpack('>f', b(byte0 + byte1 + byte2 + byte3))
-            value = flow[0]
+            unit_code = int(Brooks.get_bytes(0,data,1),16)
+            value = Brooks.ieee_unpack(Brooks.get_bytes(1,data,4))value
         except ValueError:
             value = -1
             unit_code = 171  # Satisfy assertion check, we know what is wrong
-        assert unit_code == 171  # Flow unit should always be mL/min
+        #assert unit_code == 171  # Flow unit should always be mL/min
         return value
 
-    def read_full_range(self):
+    def read_full_range(self): #command #151 for SLA-series
         """
         Report the full range of the device
-        Apparantly this does not work for SLA-series...
+        Apparantly command #152 does not work for SLA-series...
         """
-        response = self.comm('82' + self.long_address + '980106')#Command 152
-        print(response)
-        # Double check what gas-selection code really means...
-        # currently 01 is used
-        # status_code = response[0:4]
-        unit_code = int(response[4:6], 16)
-        assert unit_code == 171 #Flow controller should always be set to mL/min
+        status, data = self.__comm('970101') #Command 151
+        try:  # TODO: This should be handled be re-sending command
+            gas_selection_code = int(Brooks.get_bytes(0,data,1),16)
+            density_unit_code = int(Brooks.get_bytes(1,data,1),16)
+            process_gas_density = Brooks.ieee_unpack(Brooks.get_bytes(2,data,4))[0]
+            reference_temperature_unit_code = int(Brooks.get_bytes(6,data,1),16)
+            reference_temperature_value = Brooks.ieee_unpack(Brooks.get_bytes(7,data,4))[0]
+            reference_pressure_unit_code = int(Brooks.get_bytes(11,data,1),16)
+            reference_pressure_value = Brooks.ieee_unpack(Brooks.get_bytes(12,data,4))[0]
+            unit_code = int(Brooks.get_bytes(16,data,1),16) #reference_flow_unit_code
+            value = Brooks.ieee_unpack(Brooks.get_bytes(17,data,4))[0] #reference_flow_range_value
+        except ValueError:
+            value = -1
+            unit_code = 171  # Satisfy assertion check, we know what is wrong
+        #assert unit_code == 171  # Flow unit should always be mL/min
+        return value
 
-        flow_code = response[6:]
-        byte0 = chr(int(flow_code[0:2], 16))
-        byte1 = chr(int(flow_code[2:4], 16))
-        byte2 = chr(int(flow_code[4:6], 16))
-        byte3 = chr(int(flow_code[6:8], 16))
-        max_flow = struct.unpack('>f', byte0 + byte1 + byte2 + byte3)
-        return max_flow[0]
-
-    def set_flow(self, flowrate):
+    def set_flow(self, flowrate): #command #236
         """ Set the setpoint of the flow """
-        ieee = struct.pack('>f', flowrate)
-        ieee_flowrate = ''
-        for i in range(0, 4):
-            ieee_flowrate += hex(ord(ieee[i]))[2:].zfill(2)
-        #39 = unit code for percent
-        #FA = unit code for 'same unit as flowrate measurement'
-        #response = self.comm('82' + self.long_address +
-        #                     'ec05' + 'FA' + ieee_flowrate)
-        # status_code = response[0:4]
-        # unit_code = int(response[4:6], 16)
-        return True
+        ieee_flowrate = Brooks.ieee_pack(flowrate)
+        #ec05: ec = cmd 236; 05 = len(unit_code + ieee_sp)
+        #39 (57 dec) = unit code for percent; FA (250 dec)= unit code for 'same unit as flowrate measurement'
+        status, data = self.__comm('ec05' + 'FA' + ieee_flowrate)
+        percent_unit = int(Brooks.get_bytes(0,data,1),16) #always 57 (39 hex)
+        setpoint_percent = Brooks.ieee_unpack(Brooks.get_bytes(1,data,4))[0]
+        select_unit = int(Brooks.get_bytes(5,data,1),16) # 250 (FA), etc.
+        setpoint = Brooks.ieee_unpack(Brooks.get_bytes(6,data,4))[0]
+        return setpoint
+
+    def select_flow_unit(self, flow_unit, flow_ref=0): #command #196
+        byte0 = hex(flow_ref)[2:].zfill(2)
+        byte1 = hex(flow_unit)[2:].zfill(2)
+        status, data = self.__comm('c402' + byte0 + byte1)
+        flag = byte0 == data[:2] and byte1 == data[2:]
+        return flag
+
+    #TODO def totalizers: commands 240-242
 
 if __name__ == "__main__":
-    
+
     print('\nBrooks MFC SLA58XX series driver\n')
     
     tag='28478010'
     
     # setup the rs485 comm port:
-    BROOKS = Brooks(tag,'COM5')
+    BROOKS = Brooks(tag,'COM2') #CRHEA=COM5, HOME=COM8
     
     # command 11:
     response=BROOKS.comm('8280000000000b06'+BROOKS.pack(tag))
@@ -161,4 +183,4 @@ if __name__ == "__main__":
     print(BROOKS.long_address)
     
     # read flow:
-    BROOKS.read_flow()
+    print(BROOKS.read_flow())
