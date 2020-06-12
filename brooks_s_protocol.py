@@ -89,7 +89,7 @@ class Brooks(object):
             except ValueError:
                 error = error + 1
                 response = 'Error'
-        return response[:4], response[4:]
+        return response
 
     @staticmethod
     def get_bytes(n, data, nb=1):
@@ -109,7 +109,8 @@ class Brooks(object):
         return struct.unpack('>f', ieee)
 
     def __comm(self, cmd):
-        return self.comm('82' + self.long_address + cmd)
+        response = self.comm('82' + self.long_address + cmd)
+        return response[:4], response[4:]
 
     def read_flow(self): #command #1
         """ Read the current flow-rate """
