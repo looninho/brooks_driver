@@ -108,7 +108,7 @@ class Brooks(object):
         ieee = bytes.fromhex(ieee_str)
         return struct.unpack('>f', ieee)
 
-    def __comm(self, cmd):
+    def _comm(self, cmd):
         response = self.comm('82' + self.long_address + cmd)
         return response[:4], response[4:]
 
@@ -129,7 +129,7 @@ class Brooks(object):
         Report the full range of the device
         Apparantly command #152 does not work for SLA-series...
         """
-        status, data = self.__comm('970101') #Command 151
+        status, data = self._comm('970101') #Command 151
         try:  # TODO: This should be handled be re-sending command
             gas_selection_code = int(Brooks.get_bytes(0,data,1),16)
             density_unit_code = int(Brooks.get_bytes(1,data,1),16)
@@ -151,7 +151,7 @@ class Brooks(object):
         ieee_flowrate = Brooks.ieee_pack(flowrate)
         #ec05: ec = cmd 236; 05 = len(unit_code + ieee_sp)
         #39 (57 dec) = unit code for percent; FA (250 dec)= unit code for 'same unit as flowrate measurement'
-        status, data = self.__comm('ec05' + 'FA' + ieee_flowrate)
+        status, data = self._comm('ec05' + 'FA' + ieee_flowrate)
         percent_unit = int(Brooks.get_bytes(0,data,1),16) #always 57 (39 hex)
         setpoint_percent = Brooks.ieee_unpack(Brooks.get_bytes(1,data,4))[0]
         select_unit = int(Brooks.get_bytes(5,data,1),16) # 250 (FA), etc.
@@ -161,7 +161,7 @@ class Brooks(object):
     def select_flow_unit(self, flow_unit, flow_ref=0): #command #196
         byte0 = hex(flow_ref)[2:].zfill(2)
         byte1 = hex(flow_unit)[2:].zfill(2)
-        status, data = self.__comm('c402' + byte0 + byte1)
+        status, data = self._comm('c402' + byte0 + byte1)
         flag = byte0 == data[:2] and byte1 == data[2:]
         return flag
 
