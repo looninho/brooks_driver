@@ -1,0 +1,51 @@
+<RCC>
+    <qresource prefix="/default">
+        <file>../icones/Actions-arrow-right-icon.png</file>
+        <file>../icones/arrowleft.png</file>
+        <file>../icones/arrowright.png</file>
+        <file>../icones/connect.png</file>
+        <file>../icones/disconnect.png</file>
+        <file>../icones/document-new_16x16.png</file>
+        <file>../icones/filesave_16x16.png</file>
+        <file>../icones/filesaveas_16x16.png</file>
+        <file>../icones/filesaveas_22x22.png</file>
+        <file>../icones/gtk-quit_16x16.png</file>
+        <file>../icones/media-record_16x16.png</file>
+        <file>../icones/media-record_disable16x16.png</file>
+        <file>../icones/minus_red.png</file>
+        <file>../icones/ouvrvir.png</file>
+        <file>../icones/pause_blue.png</file>
+        <file>../icones/Pause-Hot-icon.png</file>
+        <file>../icones/pinion-icon.png</file>
+        <file>../icones/plus_green_3.png</file>
+        <file>../icones/replace.png</file>
+        <file>../icones/right_blue.png</file>
+        <file>../icones/right_stop_blue.png</file>
+        <file>../icones/Stop_sign_64x64.png</file>
+        <file>../icones/led-green-icon-16x16.png</file>
+        <file>../icones/led-grey-icon-16x16.png</file>
+        <file>../icones/refresh-16.png</file>
+        <file>../icones/down-arrow-16.png</file>
+        <file>../icones/right-arrow-16.png</file>
+    </qresource>
+    <qresource prefix="/valves">
+        <file>../icones/VM_h.png</file>
+        <file>../icones/VM_h_close.png</file>
+        <file>../icones/VM_h_open.png</file>
+        <file>../icones/VM_v.png</file>
+        <file>../icones/VM_v_close.png</file>
+        <file>../icones/VM_v_open.png</file>
+        <file>../icones/VP_NF_h.png</file>
+        <file>../icones/VP_NF_h_close.png</file>
+        <file>../icones/VP_NF_h_open.png</file>
+        <file>../icones/VP_NF_v.png</file>
+        <file>../icones/VP_NF_v_close.png</file>
+        <file>../icones/VP_NF_v_open.png</file>
+        <file>../icones/VP_NO.png</file>
+        <file>../icones/VP_NO_close.png</file>
+        <file>../icones/VP_NO_open.png</file>
+        <file>../icones/close.png</file>
+        <file>../icones/open.png</file>
+    </qresource>
+    <qresource prefix="/"/>
+</RCC>
