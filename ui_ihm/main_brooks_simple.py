@@ -14,10 +14,11 @@ import pyqtgraph as pg
 import ui_brooks_simple as ihm
 import qdarkstyle
 
+import serial
 from serial.tools.list_ports import comports
 import numpy as np
 
-from brooks_custom import BrooksCustom as BrooksMFC
+from brooks_custom_serial import BrooksCustom as BrooksMFC
 from doomy import Doomy as DoomyMFC
 
 import re
@@ -59,6 +60,8 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
         self.list_units = [None]*MAX_INSTANCE_NUMBER
 
         self.mfcs = [None]*MAX_INSTANCE_NUMBER #hardware MFCs or simulation
+        self.ports_used = {}
+        self.plt_zt = []
 
         # connexion des actions:
         self.actionConnect.triggered.connect(self.connectMFCs)
@@ -89,9 +92,11 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
         available_ports = comports()
         
         # fill comboBoxes with available ports
-        for i in range(MAX_INSTANCE_NUMBER):
-            for port in available_ports:
-                l=[]
+        for port in available_ports:
+            l=[]
+            if port.device not in self.ports_used.keys():
+                self.ports_used[port.device] = None, None
+            for i in range(MAX_INSTANCE_NUMBER):
                 for count in range(self.list_comport_widgets[i].count()):
                     l.append(self.list_comport_widgets[i].itemText(count))
                 if port.device in l:
@@ -100,36 +105,36 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
                     self.list_comport_widgets[i].addItem(port.device)
 
             # initialiser le nom des gaz:
-            self.__name_changed(i)
+                self.__name_changed(i)
         
         self.isConnected = False
         self.pb_start.setEnabled(False)
         self.stop_data_streaming()
         for i in range(self.nb_mfcs):
             if self.simulation_mode:
+                #TODO: if previous hw mode, close all ports
                 self.mfcs[i] = DoomyMFC()
-                #self.isConnected = True
+                self.isConnected = True
             else:
-                self.list_tags[i] = self.list_tag_widgets[i].text()
-                self.list_comports[i] = self.list_comport_widgets[i].currentText()
-                if self.mfcs[i] is not None:
-                    self.mfcs[i] = BrooksMFC(self.list_tags[i], self.list_comports[i])
-                #self.isConnected = True
-                #try:
-                    #self.mfcs[i] = BrooksMFC(self.list_tags[i], self.list_comports[i])
-                    #tag='28478010'
-                    #self.mfcs[i] = BrooksMFC(tag,'COM4')
-                    #print(self.mfcs[i].long_address)
-                    #self.init_raw_data()
-                    #self.connexion_and_init_plot()
-                    #TODO: control instance creation when mfcs[i] is not None; test comm
-                #except:
-                    #e = sys.exc_info()[0]
-                    #print( "Error: %s" % e )
-                    #self.isConnected = False
+                self.list_tags[i] = self.list_tag_widgets[i].text() #copie les tags des widgets dans une liste
+                self.list_comports[i] = self.list_comport_widgets[i].currentText() #copie les noms des ports dans une liste
+                if not self.ports_used[self.list_comports[i]][0]: #if not opened, open once
+                    self.uartdriver = serial.Serial(self.list_comports[i], 19200)
+                    self.uartdriver.parity = serial.PARITY_ODD
+                    self.uartdriver.bytesize = serial.EIGHTBITS
+                    self.uartdriver.stopbits = serial.STOPBITS_ONE
+                    self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver) #first connect to Brooks
+                    self.ports_used[self.list_comports[i]] = True, [self.list_tags[i]] #(isOpen, [connected tag])
+                    print("first open port done")
+                else: # port already opened, connect to many mfcs
+                    if self.list_tags[i] not in self.ports_used[self.list_comports[i]][1]: # check this tag is not yet used
+                        self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver)
+                        self.ports_used[self.list_comports[i]] = True, self.ports_used[self.list_comports[i]][1].append(self.list_tags[i])
+                    print("add more Brooks done")
+                print(self.ports_used)
+                self.isConnected = True
 
-        self.isConnected = True
-        self.pb_start.setEnabled(True)
+        self.pb_start.setEnabled(self.isConnected)
         self.on_init()
             
     def on_init(self):
@@ -154,7 +159,7 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
         self.custommenu.addAction("l/min")
         self.custommenu.addAction("cc/min")
 
-    def init_raw_data(self, nb=10):
+    def init_raw_data(self, nb=300):
         """
         brooks data
         """
@@ -182,8 +187,9 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
             self.RAW_DATA['time'].append(time.time())
             for i in range(self.nb_mfcs):
                 #DATA = self.mfcs[i].get_pv() # {'unit': str, 'fs': float, 'sp': float, 'pv': float}
-                self.RAW_DATA[self.data_desc[-1]+'_'+self.current_names[i]].append(self.mfcs[i].get_pv())            
+                self.RAW_DATA[self.data_desc[-1]+'_'+self.current_names[i]].append(0.0)            
             nb -= 1
+
 
     def connexion_and_init_plot(self):
         # création des zones de tracer
@@ -193,18 +199,12 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
                 if i < self.nb_mfcs - 1:
                     self.graphicsWindow.nextRow()
         
-                # création d'un plot dans chaque zt
-                if hasattr(MainWindow, 'plt_zt'):
-                    self.plt_zt.append(self.graphicsWindow.getItem(i,0).plot(
-                        self.RAW_DATA[self.data_desc[-1]+
-                            '_' + self.current_names[i]],
-                        pen=self.pencolors[i %3])) # data_desc[-1] = plot 'pv'
-                else:
-                    self.plt_zt=[self.graphicsWindow.getItem(i,0).plot(
-                        self.RAW_DATA[self.data_desc[-1]+
-                            '_' + self.current_names[i]],
-                        pen=self.pencolors[i %3])]
-
+                # création d'un plot dans chaque zone de tracé
+                print(i, "other plt_zt")
+                self.plt_zt.append(self.graphicsWindow.getItem(i,0).plot(
+                    self.RAW_DATA[self.data_desc[-1]+'_'+self.current_names[i]],
+                    pen=self.pencolors[i %3])) # data_desc[-1] = plot 'pv'
+        print(i, len(self.plt_zt))
                 #self.graphicsWindow.getItem(i,0).setTitle("other1_"+self.current_names[i])
                 
     # connexion des unités
@@ -412,6 +412,6 @@ if __name__ == '__main__':
     #dark_stylesheet = qdarkstyle.load_stylesheet_pyqt5()
     
     #app.setStyleSheet(dark_stylesheet)
-    window = MainWindow()
+    window = MainWindow(1)
     window.show()
     sys.exit(app.exec_())
