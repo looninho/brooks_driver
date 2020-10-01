@@ -32,7 +32,7 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
     def __init__(self, nb_mfcs=1, simulation_mode=True):
         super(MainWindow, self).__init__()
         self.simulation_mode = simulation_mode
-        self.period_timer = 200 #ms
+        self.period_timer = 500 #ms
         self.mon_timer = None
         assert nb_mfcs <= MAX_INSTANCE_NUMBER
         self.nb_mfcs = nb_mfcs
@@ -115,24 +115,28 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
                 #TODO: if previous hw mode, close all ports
                 self.mfcs[i] = DoomyMFC()
                 self.isConnected = True
-            else:
+            else: # device mode
                 self.list_tags[i] = self.list_tag_widgets[i].text() #copie les tags des widgets dans une liste
                 self.list_comports[i] = self.list_comport_widgets[i].currentText() #copie les noms des ports dans une liste
-                if not self.ports_used[self.list_comports[i]][0]: #if not opened, open once
-                    self.uartdriver = serial.Serial(self.list_comports[i], 19200)
-                    self.uartdriver.parity = serial.PARITY_ODD
-                    self.uartdriver.bytesize = serial.EIGHTBITS
-                    self.uartdriver.stopbits = serial.STOPBITS_ONE
-                    self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver) #first connect to Brooks
-                    self.ports_used[self.list_comports[i]] = True, [self.list_tags[i]] #(isOpen, [connected tag])
-                    print("first open port done")
+                if not self.ports_used[self.list_comports[i]][0]: #if not opened, open port once and connect to first mfc
+                    try:
+                        self.uartdriver = serial.Serial(self.list_comports[i], 19200) # be sure that this port is not used in another app!
+                        self.uartdriver.parity = serial.PARITY_ODD
+                        self.uartdriver.bytesize = serial.EIGHTBITS
+                        self.uartdriver.stopbits = serial.STOPBITS_ONE
+                        self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver) #first connect to Brooks
+                        self.ports_used[self.list_comports[i]] = True, [self.list_tags[i]] #(isOpen, [connected tag])
+                        self.isConnected = True
+                        print("first open port done")
+                    except IOError: #port is used in another app!
+                        self.isConnected = False
                 else: # port already opened, connect to many mfcs
                     if self.list_tags[i] not in self.ports_used[self.list_comports[i]][1]: # check this tag is not yet used
-                        self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver)
-                        self.ports_used[self.list_comports[i]] = True, self.ports_used[self.list_comports[i]][1].append(self.list_tags[i])
+                        if self.isConnected:
+                            self.mfcs[i] = BrooksMFC(self.list_tags[i], self.uartdriver) #add one more mfc to the same port
+                            self.ports_used[self.list_comports[i]] = True, self.ports_used[self.list_comports[i]][1].append(self.list_tags[i]) #update status
                     print("add more Brooks done")
                 print(self.ports_used)
-                self.isConnected = True
 
         self.pb_start.setEnabled(self.isConnected)
         self.on_init()
@@ -176,6 +180,8 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
             DATA = self.mfcs[i].get_all_data() # {'unit': str, 'fs': float, 'sp': float, 'pv': float}
             self.__unit_changed(i,DATA[self.data_desc[0]])
             self.list_fullscale_widgets[i].setText('FS = ' + '%.2f' % DATA[self.data_desc[1]])
+            self.list_fs[i] = DATA[self.data_desc[1]]
+            self.list_sp_widgets[i].setMaximum(self.list_fs[i])
             self.list_sp_widgets[i].setValue(DATA[self.data_desc[2]])
             self.list_pv_widgets[i].setText('%.2f' % DATA[self.data_desc[-1]])
 
@@ -189,7 +195,6 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
                 #DATA = self.mfcs[i].get_pv() # {'unit': str, 'fs': float, 'sp': float, 'pv': float}
                 self.RAW_DATA[self.data_desc[-1]+'_'+self.current_names[i]].append(0.0)            
             nb -= 1
-
 
     def connexion_and_init_plot(self):
         # création des zones de tracer
@@ -286,11 +291,12 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
     # connexion des tags
     def __tag_changed(self, idx):
         tag = self.list_tag_widgets[idx].text()
-        tag = tag.split()[0]
-        if len(tag) == 8:
-            msg_match = self.MSG_RGX.match(tag)
-            if msg_match:
-                self.list_tags[idx] = msg_match.group()
+        #tag = tag.split()[0]
+        #if len(tag) == 8:
+            #msg_match = self.MSG_RGX.match(tag)
+            #if msg_match:
+                #self.list_tags[idx] = msg_match.group()
+        self.list_tags[idx] = tag.split()[0]
     def on_tag_1_editingFinished(self):
         self.__tag_changed(0)
     def on_tag_2_editingFinished(self):
@@ -315,7 +321,7 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
     # connexion des setpoints:
     def __setpointchange(self, idx):
         self.list_sps[idx] = self.list_sp_widgets[idx].value()
-        self.mfcs[idx].set_setpoint(self.list_sp_widgets[idx].value())
+        self.mfcs[idx].set_setpoint(self.list_sps[idx])
         #TODO: if not simulation_mode: send to MFC
     def on_sp_1_valueChanged(self):
         self.__setpointchange(0)
@@ -404,7 +410,6 @@ class MainWindow(QMainWindow, ihm.Ui_MainWindow):
             event.accept()
         else:
             event.ignore()
-
 
 if __name__ == '__main__':    
     app = QApplication([])
